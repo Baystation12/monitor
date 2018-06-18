@@ -1,21 +1,22 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
-	"syscall"
+
+	"docker.io/go-docker"
+	"gopkg.in/src-d/go-git.v4"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/render"
 	"github.com/goji/httpauth"
-	"gopkg.in/src-d/go-git.v4"
 )
 
 type Config struct {
@@ -25,6 +26,7 @@ type Config struct {
 	UpdateScript string `json:"update_script"`
 	GitDir       string `json:"git_dir"`
 	PidFile      string `json:"pid_file"`
+	Container    string `json:"container"`
 }
 
 type Response struct {
@@ -44,7 +46,8 @@ func NewResponse(success bool, message interface{}) render.Renderer {
 }
 
 type Monitor struct {
-	Conf *Config
+	Conf   *Config
+	Docker *docker.Client
 }
 
 func (m *Monitor) Start(w http.ResponseWriter, r *http.Request) {
@@ -118,9 +121,8 @@ func (m *Monitor) Commit(w http.ResponseWriter, r *http.Request) {
 func (m *Monitor) IsRunning(w http.ResponseWriter, r *http.Request) {
 	running := true
 
-	bpid, err := ioutil.ReadFile(m.Conf.PidFile)
-	pid, perr := strconv.Atoi(strings.TrimSpace(string(bpid)))
-	if err != nil || perr != nil || syscall.Kill(pid, syscall.Signal(0)) != nil {
+	info, err := m.Docker.ContainerInspect(context.Background(), m.Conf.Container)
+	if err != nil || info.State.Running == false {
 		running = false
 	}
 
@@ -140,7 +142,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	monitor := &Monitor{&config}
+	client, err := docker.NewEnvClient()
+	if err != nil {
+		fmt.Printf("docker client failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	monitor := &Monitor{
+		&config,
+		client,
+	}
 
 	fmt.Print("starting\n")
 
