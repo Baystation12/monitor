@@ -20,13 +20,14 @@ import (
 )
 
 type Config struct {
-	Password     string `json:"password"`
-	StartScript  string `json:"start_script"`
-	StopScript   string `json:"stop_script"`
-	UpdateScript string `json:"update_script"`
-	GitDir       string `json:"git_dir"`
-	PidFile      string `json:"pid_file"`
-	Container    string `json:"container"`
+	Password          string `json:"password"`
+	StartScript       string `json:"start_script"`
+	StopScript        string `json:"stop_script"`
+	UpdateScript      string `json:"update_script"`
+	RestoreSaveScript string `json:"restoresave_script"`
+	GitDir            string `json:"git_dir"`
+	PidFile           string `json:"pid_file"`
+	Container         string `json:"container"`
 }
 
 type Response struct {
@@ -84,6 +85,28 @@ func (m *Monitor) Update(w http.ResponseWriter, r *http.Request) {
 	if err := cmd.Run(); err != nil {
 		success = false
 		message = fmt.Sprintf("Server failed to update (%v)", err)
+	}
+
+	render.Render(w, r, NewResponse(success, message))
+}
+
+func (m *Monitor) RestoreSave(w http.ResponseWriter, r *http.Request) {
+	ckey := strings.ToLower(r.FormValue("ckey"))
+	date := r.FormValue("date")
+	if ckey == "" || date == "" {
+		render.Render(w, r, NewResponse(false, "Invalid request"))
+		return
+	}
+
+	cmd := exec.Command(m.Conf.RestoreSaveScript, ckey, date)
+
+	success := true
+	bmessage, err := cmd.CombinedOutput()
+	message := string(bmessage)
+
+	if err != nil {
+		success = false
+		message = fmt.Sprintf("Script failed to run: %v\n\n%v", err, message)
 	}
 
 	render.Render(w, r, NewResponse(success, message))
@@ -167,6 +190,7 @@ func main() {
 	r.Post("/start", monitor.Start)
 	r.Post("/stop", monitor.Stop)
 	r.Post("/update", monitor.Update)
+	r.Post("/restoresave", monitor.RestoreSave)
 	r.Get("/commit", monitor.Commit)
 	r.Get("/is_running", monitor.IsRunning)
 
