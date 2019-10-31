@@ -13,10 +13,12 @@ import (
 	"docker.io/go-docker"
 	"gopkg.in/src-d/go-git.v4"
 
+	chiprometheus "github.com/766b/chi-prometheus"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/render"
 	"github.com/goji/httpauth"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Config struct {
@@ -186,6 +188,11 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(render.SetContentType(render.ContentTypeJSON))
 	r.Use(httpauth.SimpleBasicAuth("auth", config.Password))
+
+	// prometheus middleware
+	pm := chiprometheus.NewMiddleware("monitor")
+	r.Use(pm)
+	r.Handle("/metrics", promhttp.Handler())
 
 	r.Post("/start", monitor.Start)
 	r.Post("/stop", monitor.Stop)
